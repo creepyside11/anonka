@@ -4,10 +4,11 @@ import os
 import secrets
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Any, Awaitable, Callable, Optional
 from urllib.parse import urlencode
 
-from aiogram import Bot, Dispatcher, F, Router
+import aiohttp
+from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.enums import ChatType, ContentType
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
@@ -17,11 +18,13 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    TelegramObject,
 )
 
 
 DB_PATH = Path(os.getenv("DB_PATH", "bot.db"))
 router = Router()
+logger = logging.getLogger(__name__)
 
 BTN_LINK = "🔗 Моя ссылка"
 BTN_HELP = "ℹ️ Как это работает"
@@ -144,6 +147,33 @@ class Database:
         self.connection.close()
 
 
+class EmeraldStatsMiddleware(BaseMiddleware):
+    def __init__(self, session: aiohttp.ClientSession, url: str, key: str) -> None:
+        self.session = session
+        self.url = url
+        self.headers = {"Authorization": f"Bearer {key}"}
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        try:
+            async with self.session.post(
+                self.url,
+                json=event.model_dump(mode="json"),
+                headers=self.headers,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status >= 400:
+                    logger.warning("Emerald stats returned HTTP %s", response.status)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            logger.warning("Failed to send update to Emerald stats: %s", exc)
+
+        return await handler(event, data)
+
+
 db = Database(DB_PATH)
 
 
@@ -168,10 +198,7 @@ def send_keyboard() -> ReplyKeyboardMarkup:
 
 def share_keyboard(link: str) -> InlineKeyboardMarkup:
     share_url = "https://t.me/share/url?" + urlencode(
-        {
-            "url": link,
-            "text": "💌 Отправь мне анонимное сообщение",
-        }
+        {"url": link, "text": "💌 Отправь мне анонимное сообщение"}
     )
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -308,10 +335,7 @@ async def cancel_handler(message: Message) -> None:
 
     register_user(message)
     db.clear_pending_target(message.from_user.id)
-    await message.answer(
-        "✅ Отправка отменена.",
-        reply_markup=main_keyboard(),
-    )
+    await message.answer("✅ Отправка отменена.", reply_markup=main_keyboard())
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)
@@ -323,8 +347,7 @@ async def anonymous_message_handler(message: Message) -> None:
 
     if message.text and message.text.startswith("/"):
         await message.answer(
-            "🤔 Не знаю такую команду.\n"
-            "Используй /start, /link, /help или /cancel.",
+            "🤔 Не знаю такую команду.\nИспользуй /start, /link, /help или /cancel.",
             reply_markup=main_keyboard(),
         )
         return
@@ -384,12 +407,26 @@ async def main() -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
 
-    try:
-        await bot.delete_webhook(drop_pending_updates=False)
-        await dispatcher.start_polling(bot)
-    finally:
-        db.close()
-        await bot.session.close()
+    stats_url = os.getenv("EMERALD_STATS_URL")
+    stats_key = os.getenv("EMERALD_STATS_KEY")
+
+    async with aiohttp.ClientSession() as stats_session:
+        if stats_url and stats_key:
+            dispatcher.update.outer_middleware(
+                EmeraldStatsMiddleware(stats_session, stats_url, stats_key)
+            )
+            logger.info("Emerald stats integration enabled")
+        elif stats_url or stats_key:
+            logger.warning(
+                "Emerald stats disabled: set both EMERALD_STATS_URL and EMERALD_STATS_KEY"
+            )
+
+        try:
+            await bot.delete_webhook(drop_pending_updates=False)
+            await dispatcher.start_polling(bot)
+        finally:
+            db.close()
+            await bot.session.close()
 
 
 if __name__ == "__main__":
