@@ -140,6 +140,7 @@ function updateButtons() {
   const ready = !!(state.profile?.connected && $('repo-select').value && $('branch-select').value);
   $('save-settings').disabled = !ready;
   $('sync-now').disabled = !ready;
+  $('auto-toggle').disabled = !ready;
 }
 
 $('repo-select').addEventListener('change', async (event) => {
@@ -149,22 +150,34 @@ $('repo-select').addEventListener('change', async (event) => {
 });
 $('branch-select').addEventListener('change', updateButtons);
 
+async function persistSettings(showToast = true) {
+  const result = await api('/api/project/settings', {
+    method: 'POST',
+    body: JSON.stringify({
+      repo: $('repo-select').value,
+      branch: $('branch-select').value,
+      auto_update: $('auto-toggle').checked,
+    }),
+  });
+  state.settings = result.settings;
+  $('save-status').textContent = $('auto-toggle').checked ? 'Автообновление включено — проверка каждые 30 секунд.' : 'Автообновление выключено.';
+  if (showToast) toast('Настройки сохранены');
+}
+
 $('save-settings').addEventListener('click', async () => {
   $('save-status').textContent = 'Сохраняю…';
+  try { await persistSettings(); }
+  catch (error) { $('save-status').textContent = error.message; }
+});
+
+$('auto-toggle').addEventListener('change', async () => {
+  const desired = $('auto-toggle').checked;
   try {
-    const result = await api('/api/project/settings', {
-      method: 'POST',
-      body: JSON.stringify({
-        repo: $('repo-select').value,
-        branch: $('branch-select').value,
-        auto_update: $('auto-toggle').checked,
-      }),
-    });
-    state.settings = result.settings;
-    $('save-status').textContent = $('auto-toggle').checked ? 'Автообновление включено.' : 'Настройки сохранены.';
-    toast('Настройки сохранены');
+    await persistSettings(false);
+    toast(desired ? 'Автообновление включено' : 'Автообновление выключено');
   } catch (error) {
-    $('save-status').textContent = error.message;
+    $('auto-toggle').checked = !desired;
+    toast(error.message);
   }
 });
 
