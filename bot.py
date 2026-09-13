@@ -5,16 +5,39 @@ import secrets
 import sqlite3
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlencode
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.enums import ChatType
+from aiogram.enums import ChatType, ContentType
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 
 
 DB_PATH = Path(os.getenv("DB_PATH", "bot.db"))
 router = Router()
+
+BTN_LINK = "🔗 Моя ссылка"
+BTN_HELP = "ℹ️ Как это работает"
+BTN_CANCEL = "❌ Отменить отправку"
+
+ALLOWED_CONTENT_TYPES = {
+    ContentType.TEXT,
+    ContentType.PHOTO,
+    ContentType.VIDEO,
+    ContentType.ANIMATION,
+    ContentType.AUDIO,
+    ContentType.VOICE,
+    ContentType.VIDEO_NOTE,
+    ContentType.DOCUMENT,
+    ContentType.STICKER,
+}
 
 
 class Database:
@@ -124,6 +147,39 @@ class Database:
 db = Database(DB_PATH)
 
 
+def main_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_LINK)],
+            [KeyboardButton(text=BTN_HELP)],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выбери действие 👇",
+    )
+
+
+def send_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=BTN_CANCEL)]],
+        resize_keyboard=True,
+        input_field_placeholder="Напиши сообщение или отправь медиа 💌",
+    )
+
+
+def share_keyboard(link: str) -> InlineKeyboardMarkup:
+    share_url = "https://t.me/share/url?" + urlencode(
+        {
+            "url": link,
+            "text": "💌 Отправь мне анонимное сообщение",
+        }
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share_url)]
+        ]
+    )
+
+
 def register_user(message: Message) -> Optional[str]:
     user = message.from_user
     if user is None:
@@ -136,6 +192,21 @@ async def build_link(bot: Bot, anon_code: str) -> str:
     if not me.username:
         raise RuntimeError("Bot username is not available")
     return f"https://t.me/{me.username}?start=send_{anon_code}"
+
+
+async def send_personal_link(message: Message, bot: Bot) -> None:
+    anon_code = register_user(message)
+    if anon_code is None:
+        return
+
+    link = await build_link(bot, anon_code)
+    await message.answer(
+        "🔗 Твоя персональная ссылка:\n\n"
+        f"{link}\n\n"
+        "📤 Поделись ей с друзьями — по ней можно отправить тебе "
+        "анонимный текст или медиа.",
+        reply_markup=share_keyboard(link),
+    )
 
 
 @router.message(CommandStart())
@@ -158,53 +229,89 @@ async def start_handler(message: Message, bot: Bot) -> None:
         target_id = db.get_user_id_by_code(target_code)
 
         if target_id is None:
-            await message.answer("Ссылка недействительна или устарела.")
+            await message.answer(
+                "⚠️ Эта ссылка недействительна или устарела.",
+                reply_markup=main_keyboard(),
+            )
             return
 
         if target_id == message.from_user.id:
-            await message.answer("Нельзя отправить анонимное сообщение самому себе.")
+            await message.answer(
+                "😄 Себе анонимное сообщение отправить не получится.\n"
+                "Лучше поделись своей ссылкой с друзьями 👇",
+                reply_markup=main_keyboard(),
+            )
+            await send_personal_link(message, bot)
             return
 
         db.set_pending_target(message.from_user.id, target_id)
         await message.answer(
-            "Отправь текст одним сообщением. "
-            "Получатель не увидит, кто его отправил.\n\n"
-            "Чтобы отменить отправку: /cancel"
+            "💌 Отправь анонимное сообщение\n\n"
+            "Можно отправить:\n"
+            "📝 текст\n"
+            "🖼 фото и GIF\n"
+            "🎬 видео и кружок\n"
+            "🎤 голосовое и аудио\n"
+            "📎 документ\n"
+            "✨ стикер\n\n"
+            "Получатель не увидит, кто это отправил.",
+            reply_markup=send_keyboard(),
         )
         return
 
     db.clear_pending_target(message.from_user.id)
-    link = await build_link(bot, anon_code)
     await message.answer(
-        "Привет! Это бот для анонимных текстовых сообщений.\n\n"
-        "Твоя персональная ссылка:\n"
-        f"{link}\n\n"
-        "Поделись ей — любой, кто откроет ссылку, сможет отправить тебе текст анонимно.\n"
-        "Получить ссылку снова: /link"
+        "👋 Привет! Здесь можно получать анонимные сообщения.\n\n"
+        "💬 Друзья переходят по твоей персональной ссылке и отправляют "
+        "текст или медиа — без имени отправителя.\n\n"
+        "👇 Используй кнопки ниже:",
+        reply_markup=main_keyboard(),
     )
+    await send_personal_link(message, bot)
 
 
 @router.message(Command("link"))
+@router.message(F.text == BTN_LINK)
 async def link_handler(message: Message, bot: Bot) -> None:
     if message.chat.type != ChatType.PRIVATE or message.from_user is None:
         return
 
-    anon_code = register_user(message)
-    if anon_code is None:
-        return
-
-    link = await build_link(bot, anon_code)
-    await message.answer(f"Твоя ссылка для анонимных сообщений:\n{link}")
+    db.clear_pending_target(message.from_user.id)
+    await send_personal_link(message, bot)
 
 
-@router.message(Command("cancel"))
-async def cancel_handler(message: Message) -> None:
-    if message.from_user is None:
+@router.message(Command("help"))
+@router.message(F.text == BTN_HELP)
+async def help_handler(message: Message) -> None:
+    if message.chat.type != ChatType.PRIVATE or message.from_user is None:
         return
 
     register_user(message)
     db.clear_pending_target(message.from_user.id)
-    await message.answer("Отправка отменена.")
+    await message.answer(
+        "ℹ️ Как это работает\n\n"
+        "1️⃣ Нажми «🔗 Моя ссылка».\n"
+        "2️⃣ Поделись ссылкой с друзьями.\n"
+        "3️⃣ Друг открывает её и отправляет текст или медиа.\n"
+        "4️⃣ Ты получаешь сообщение без имени отправителя. 🕵️\n\n"
+        "Поддерживаются текст, фото, GIF, видео, кружки, голосовые, "
+        "аудио, документы и стикеры.",
+        reply_markup=main_keyboard(),
+    )
+
+
+@router.message(Command("cancel"))
+@router.message(F.text == BTN_CANCEL)
+async def cancel_handler(message: Message) -> None:
+    if message.chat.type != ChatType.PRIVATE or message.from_user is None:
+        return
+
+    register_user(message)
+    db.clear_pending_target(message.from_user.id)
+    await message.answer(
+        "✅ Отправка отменена.",
+        reply_markup=main_keyboard(),
+    )
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)
@@ -215,34 +322,52 @@ async def anonymous_message_handler(message: Message) -> None:
     register_user(message)
 
     if message.text and message.text.startswith("/"):
-        await message.answer("Неизвестная команда. Используй /start, /link или /cancel.")
+        await message.answer(
+            "🤔 Не знаю такую команду.\n"
+            "Используй /start, /link, /help или /cancel.",
+            reply_markup=main_keyboard(),
+        )
         return
 
     target_id = db.get_pending_target(message.from_user.id)
     if target_id is None:
         await message.answer(
-            "Чтобы отправить анонимное сообщение, открой персональную ссылку получателя.\n"
-            "Свою ссылку можно получить командой /link."
+            "💡 Чтобы отправить кому-то анонимное сообщение, "
+            "открой его персональную ссылку.\n\n"
+            "А свою ссылку можно получить кнопкой «🔗 Моя ссылка».",
+            reply_markup=main_keyboard(),
         )
         return
 
-    if message.text is None:
-        await message.answer("Можно отправлять только текстовые сообщения.")
+    if message.content_type not in ALLOWED_CONTENT_TYPES:
+        await message.answer(
+            "⚠️ Такой тип сообщения пока не поддерживается.\n\n"
+            "Отправь текст, фото, GIF, видео, кружок, голосовое, "
+            "аудио, документ или стикер.",
+            reply_markup=send_keyboard(),
+        )
         return
 
     try:
-        await message.bot.send_message(chat_id=target_id, text=message.text)
+        await message.copy_to(chat_id=target_id)
         await message.bot.send_message(
             chat_id=target_id,
-            text="↑ Новое анонимное сообщение",
+            text="💌 Новое анонимное сообщение",
         )
     except (TelegramForbiddenError, TelegramBadRequest):
-        await message.answer("Не удалось доставить сообщение получателю.")
         db.clear_pending_target(message.from_user.id)
+        await message.answer(
+            "😕 Не удалось доставить сообщение.\n"
+            "Возможно, получатель заблокировал бота.",
+            reply_markup=main_keyboard(),
+        )
         return
 
     db.clear_pending_target(message.from_user.id)
-    await message.answer("Сообщение отправлено анонимно ✅")
+    await message.answer(
+        "✅ Готово! Сообщение отправлено анонимно 💌",
+        reply_markup=main_keyboard(),
+    )
 
 
 async def main() -> None:
