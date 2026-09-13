@@ -1,24 +1,65 @@
 # anonka
 
-Telegram-бот для получения анонимных сообщений с кнопками, медиа и отправкой статистики в Emerald Stats.
+Telegram-бот для анонимных сообщений + веб-панель управления с GitHub OAuth и автообновлением проектов.
 
-## Возможности
+## Возможности бота
 
-- 🔗 персональная ссылка для каждого пользователя;
-- 📤 кнопка для быстрого шаринга ссылки;
-- 💬 анонимная отправка текста;
-- 🖼 фото и GIF;
-- 🎬 видео и видеосообщения;
-- 🎤 голосовые и аудио;
-- 📎 документы;
-- ✨ стикеры;
-- 🧭 удобные кнопки меню;
-- ❌ кнопка отмены текущей отправки;
-- 💾 SQLite для пользователей и текущего получателя сообщения;
-- 📊 отправка входящих Telegram Update в Emerald Stats;
-- 🔐 токен бота берётся только из переменной окружения `BOT_TOKEN`.
+- персональная ссылка для каждого пользователя;
+- текст, фото, GIF, видео, кружки, голосовые, аудио, документы и стикеры;
+- SQLite;
+- кнопки меню и быстрый шаринг ссылки;
+- статистика через Emerald Stats при наличии `EMERALD_STATS_URL` и `EMERALD_STATS_KEY`.
 
-> Анонимность действует для получателя сообщения: Telegram ID отправителей обрабатывается ботом для маршрутизации сообщений. При включённой Emerald Stats полный входящий Telegram Update также отправляется на указанный endpoint статистики.
+## Веб-панель
+
+Панель запускается вместе с ботом и доступна на `PORT` (по умолчанию `8000`).
+
+- дизайн в стиле Liquid Glass;
+- GitHub OAuth в разделе профиля;
+- список доступных публичных и приватных репозиториев;
+- выбор доступной ветки;
+- включение/выключение автообновления проекта;
+- проверка выбранной ветки каждые 30 секунд;
+- при новом SHA свежая версия репозитория автоматически синхронизируется в `projects/<github_id>/<repo>`.
+
+GitHub access token хранится в `dashboard.db` в зашифрованном виде. Ключ шифрования выводится из `SESSION_SECRET`.
+
+## Переменные окружения
+
+Обязательные для Telegram-бота:
+
+```bash
+BOT_TOKEN=123456:ABCDEF
+```
+
+Для GitHub OAuth:
+
+```bash
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+SESSION_SECRET=change-me-to-a-long-random-value
+BASE_URL=https://your-domain.example
+```
+
+В GitHub OAuth App укажите callback URL:
+
+```text
+https://your-domain.example/auth/github/callback
+```
+
+OAuth запрашивает `repo read:user`, поэтому после подключения доступны и приватные репозитории, к которым у пользователя есть доступ.
+
+Опционально:
+
+```bash
+PORT=8000
+HOST=0.0.0.0
+DASHBOARD_DB=dashboard.db
+GITHUB_SYNC_ROOT=projects
+DB_PATH=bot.db
+EMERALD_STATS_URL=https://...
+EMERALD_STATS_KEY=...
+```
 
 ## Запуск
 
@@ -26,30 +67,13 @@ Telegram-бот для получения анонимных сообщений 
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export BOT_TOKEN="123456:ABCDEF"
-export EMERALD_STATS_URL="https://example.com/stats"
-export EMERALD_STATS_KEY="your-secret-key"
 python main.py
 ```
 
-На Windows вместо `source .venv/bin/activate` используй `.venv\\Scripts\\activate`.
+На Windows:
 
-По умолчанию база создаётся в `bot.db`. При необходимости путь можно изменить через `DB_PATH`.
+```bash
+.venv\Scripts\activate
+```
 
-## Emerald Stats
-
-Чтобы включить статистику, задай обе переменные окружения:
-
-- `EMERALD_STATS_URL` — URL, куда бот отправляет каждый входящий Telegram Update методом POST;
-- `EMERALD_STATS_KEY` — ключ, который передаётся в заголовке `Authorization: Bearer <key>`.
-
-Если обе переменные не заданы, бот продолжит работать без статистики. Ошибки или таймауты сервиса статистики логируются и не останавливают бота.
-
-## Команды
-
-- `/start` — открыть главное меню и получить свою ссылку;
-- `/link` — показать персональную ссылку;
-- `/help` — показать инструкцию;
-- `/cancel` — отменить текущую отправку.
-
-Также большинство действий доступны кнопками прямо в Telegram.
+`main.py` одновременно запускает Telegram polling и веб-панель.
