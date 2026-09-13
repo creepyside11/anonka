@@ -167,7 +167,7 @@ async def start_handler(message: Message, bot: Bot) -> None:
 
         db.set_pending_target(message.from_user.id, target_id)
         await message.answer(
-            "Отправь одним сообщением текст, фото, видео, голосовое или другой файл. "
+            "Отправь текст одним сообщением. "
             "Получатель не увидит, кто его отправил.\n\n"
             "Чтобы отменить отправку: /cancel"
         )
@@ -176,10 +176,10 @@ async def start_handler(message: Message, bot: Bot) -> None:
     db.clear_pending_target(message.from_user.id)
     link = await build_link(bot, anon_code)
     await message.answer(
-        "Привет! Это бот для анонимных сообщений.\n\n"
+        "Привет! Это бот для анонимных текстовых сообщений.\n\n"
         "Твоя персональная ссылка:\n"
         f"{link}\n\n"
-        "Поделись ей — любой, кто откроет ссылку, сможет отправить тебе сообщение анонимно.\n"
+        "Поделись ей — любой, кто откроет ссылку, сможет отправить тебе текст анонимно.\n"
         "Получить ссылку снова: /link"
     )
 
@@ -226,8 +226,12 @@ async def anonymous_message_handler(message: Message) -> None:
         )
         return
 
+    if message.text is None:
+        await message.answer("Можно отправлять только текстовые сообщения.")
+        return
+
     try:
-        await message.copy_to(chat_id=target_id)
+        await message.bot.send_message(chat_id=target_id, text=message.text)
         await message.bot.send_message(
             chat_id=target_id,
             text="↑ Новое анонимное сообщение",
