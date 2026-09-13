@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101024">
+  <title>Anonka Control</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <div class="ambient ambient-c"></div>
+
+  <main class="shell">
+    <aside class="sidebar glass">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div><strong>Anonka</strong><span>Control</span></div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="project"><span>◈</span> Проект</button>
+        <button class="nav-item" data-view="profile"><span>◉</span> Профиль</button>
+      </nav>
+      <div class="sidebar-status">
+        <span class="pulse"></span>
+        <div><strong>Система активна</strong><small>GitHub sync каждые 30 сек.</small></div>
+      </div>
+    </aside>
+
+    <section class="content">
+      <header class="topbar glass">
+        <div>
+          <p class="eyebrow">ANONKA CONTROL</p>
+          <h1 id="page-title">Настройки проекта</h1>
+        </div>
+        <button id="profile-chip" class="profile-chip" data-view="profile">
+          <span class="avatar-fallback">GH</span>
+          <span id="profile-name">GitHub не подключён</span>
+        </button>
+      </header>
+
+      <section id="project-view" class="view active">
+        <div class="hero glass liquid">
+          <div class="hero-copy">
+            <span class="hero-badge">Liquid Glass</span>
+            <h2>GitHub‑обновления без ручных действий.</h2>
+            <p>Подключи GitHub один раз, выбери репозиторий и ветку — дальше проект сам проверяет новые коммиты каждые 30 секунд.</p>
+          </div>
+          <div class="orb"><span>↻</span></div>
+        </div>
+
+        <div class="grid">
+          <article class="card glass">
+            <div class="card-head">
+              <div><p class="eyebrow">SOURCE</p><h3>Источник проекта</h3></div>
+              <span id="git-state" class="status-pill muted">Не подключён</span>
+            </div>
+
+            <label class="field">
+              <span>Репозиторий</span>
+              <select id="repo-select" disabled><option>Сначала подключите GitHub</option></select>
+            </label>
+            <label class="field">
+              <span>Ветка</span>
+              <select id="branch-select" disabled><option>—</option></select>
+            </label>
+
+            <div class="repo-meta">
+              <div><small>Последняя проверка</small><strong id="last-checked">—</strong></div>
+              <div><small>Последнее обновление</small><strong id="last-synced">—</strong></div>
+            </div>
+            <div id="sync-error" class="error-box hidden"></div>
+          </article>
+
+          <article class="card glass">
+            <div class="card-head">
+              <div><p class="eyebrow">AUTOMATION</p><h3>Автообновление</h3></div>
+              <div class="live-dot"></div>
+            </div>
+            <p class="muted-copy">Когда включено, сервер сверяет SHA выбранной ветки с текущей версией и автоматически загружает свежие файлы.</p>
+
+            <label class="toggle-row" id="auto-row">
+              <div><strong>Автообновление с GitHub</strong><small id="auto-note">Доступно после подключения GitHub</small></div>
+              <input type="checkbox" id="auto-toggle" disabled>
+              <span class="toggle"></span>
+            </label>
+
+            <div class="button-row">
+              <button id="save-settings" class="primary" disabled>Сохранить</button>
+              <button id="sync-now" class="secondary" disabled>Обновить сейчас</button>
+            </div>
+            <p id="save-status" class="inline-status"></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="profile-view" class="view">
+        <div class="profile-grid">
+          <article class="profile-card glass liquid">
+            <div id="profile-avatar" class="profile-avatar">GH</div>
+            <div>
+              <p class="eyebrow">PROFILE</p>
+              <h2 id="profile-heading">GitHub не подключён</h2>
+              <p id="profile-description">Подключи аккаунт GitHub, чтобы видеть приватные репозитории и доступные ветки.</p>
+            </div>
+          </article>
+
+          <article class="card glass">
+            <div class="card-head"><div><p class="eyebrow">GITHUB OAUTH</p><h3>Подключение</h3></div><span id="oauth-badge" class="status-pill muted">Отключено</span></div>
+            <p class="muted-copy">Авторизация запрашивает доступ к репозиториям и профилю. Токен хранится на сервере в зашифрованном виде.</p>
+            <div class="button-row">
+              <a id="connect-github" class="primary link-button" href="/auth/github">Подключить GitHub</a>
+              <button id="disconnect-github" class="danger hidden">Отключить</button>
+            </div>
+            <div id="oauth-warning" class="error-box hidden"></div>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast glass"></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
